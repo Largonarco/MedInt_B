@@ -47,10 +47,10 @@ class ToolManager:
             
             # Prepare appointment data
             appointment_data = {
+                "reason": reason,
                 "action": "schedule_follow_up",
                 "patient_name": params["patientName"],
                 "appointment_date": params["date"],
-                "reason": reason,
                 "timestamp": datetime.now().isoformat()
             }
             
@@ -103,10 +103,10 @@ class ToolManager:
             
             # Prepare lab order data
             lab_order_data = {
+                "urgency": urgency,
                 "action": "send_lab_order",
                 "patient_name": params["patientName"],
                 "test_type": params["testType"],
-                "urgency": urgency,
                 "timestamp": datetime.now().isoformat()
             }
             
@@ -125,9 +125,9 @@ class ToolManager:
             # Return success response
             return {
                 "success": True,
-                "message": f"Lab order for {params['testType']} sent for {params['patientName']} with {urgency} urgency",
+                "webhookResponse": response_status,
                 "orderId": f"LAB-{datetime.now().timestamp():.0f}",
-                "webhookResponse": response_status
+                "message": f"Lab order for {params['testType']} sent for {params['patientName']} with {urgency} urgency",
             }
         
         except Exception as e:
