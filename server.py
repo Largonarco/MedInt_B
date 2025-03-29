@@ -117,7 +117,7 @@ async def send_text_done(session_id: str, text: str):
         role = parsed_data.get("role", "")
         message_text = parsed_data.get("text", "")
         
-        await websocket.send_json({"type": "text_response_done", "text": text, "role": role})
+        await websocket.send_json({"type": "text_response_done", "text": message_text, "role": role})
         
         # Store in conversation history
         if session_id in conversation_history:
