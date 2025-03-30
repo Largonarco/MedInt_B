@@ -48,8 +48,9 @@ async def process_websocket_message(session_id: str, message: Dict):
             # Initialize OpenAI Realtime connection
             openai_manager = OpenAIRealtimeManager(
                 on_audio_done=lambda: asyncio.create_task(send_audio_done(session_id)),
+                on_text_done=lambda text: asyncio.create_task(send_text_done(session_id, text)),
                 on_audio_delta=lambda delta: asyncio.create_task(send_audio_delta(session_id, delta)),
-                on_response_done=lambda text: asyncio.create_task(send_response_done(session_id, text)),
+                on_response_done=lambda response: asyncio.create_task(send_response_done(session_id, response)),
                 on_function_call=lambda name, args: asyncio.create_task(handle_function_call(session_id, name, args))
             )
             
@@ -94,6 +95,26 @@ async def process_websocket_message(session_id: str, message: Dict):
         logger.error(f"Error processing message: {str(e)}")
         await websocket.send_json({"type": "error", "message": str(e)})
 
+
+async def send_text_done(session_id: str, text: str):
+    """Send completed text to client."""
+    websocket = active_connections.get(session_id)
+    
+    if websocket:        
+        await websocket.send_json({"type": "text_done", "text": text})
+        
+async def send_audio_delta(session_id: str, delta: str):
+    """Send audio delta to client."""
+    websocket = active_connections.get(session_id)
+    if websocket:
+        await websocket.send_json({"type": "audio_response_delta", "delta": delta})
+
+async def send_audio_done(session_id: str):
+    """Notify client that audio is complete."""
+    websocket = active_connections.get(session_id)
+    if websocket:
+        await websocket.send_json({"type": "audio_response_done"})
+
 async def send_response_done(session_id: str, response: dict):
     """Send completed text to client."""
     websocket = active_connections.get(session_id)
@@ -112,18 +133,6 @@ async def send_response_done(session_id: str, response: dict):
             elif final_response_role == "patient":
                 conversation_history[session_id]["patient_messages"].append(final_response_msg)
                 conversation_history[session_id]["last_patient_message"] = final_response_msg
-
-async def send_audio_delta(session_id: str, delta: str):
-    """Send audio delta to client."""
-    websocket = active_connections.get(session_id)
-    if websocket:
-        await websocket.send_json({"type": "audio_response_delta", "delta": delta})
-
-async def send_audio_done(session_id: str):
-    """Notify client that audio is complete."""
-    websocket = active_connections.get(session_id)
-    if websocket:
-        await websocket.send_json({"type": "audio_response_done"})
 
 async def handle_function_call(session_id: str, function_name: str, function_args: Dict):
     """Handle function calls from OpenAI."""

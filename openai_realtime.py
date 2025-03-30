@@ -20,6 +20,7 @@ class OpenAIRealtimeManager:
     def __init__(
         self,
         on_audio_done: Callable[[], None],
+        on_text_done: Callable[[str], None],
         on_audio_delta: Callable[[str], None],
         on_response_done: Callable[[str], None],
         on_function_call: Callable[[str, Dict], None]
@@ -34,6 +35,7 @@ class OpenAIRealtimeManager:
         self.api_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
         
         # Callbacks
+        self.on_text_done = on_text_done
         self.on_audio_done = on_audio_done
         self.on_audio_delta = on_audio_delta
         self.on_response_done = on_response_done
@@ -128,6 +130,9 @@ class OpenAIRealtimeManager:
     async def _process_message(self, message: Dict):
         message_type = message.get("type")
         try:
+            if message_type == "response.text.done":
+                if self.on_text_done and "text" in message:
+                    self.on_text_done(message["text"])
             if message_type == "response.audio.delta":
                 if self.on_audio_delta and "delta" in message:
                     self.on_audio_delta(message["delta"])
