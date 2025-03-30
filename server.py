@@ -47,10 +47,9 @@ async def process_websocket_message(session_id: str, message: Dict):
         if message_type == "connect":
             # Initialize OpenAI Realtime connection
             openai_manager = OpenAIRealtimeManager(
-                on_text_delta=lambda delta: asyncio.create_task(send_text_delta(session_id, delta)),
-                on_text_done=lambda text: asyncio.create_task(send_text_done(session_id, text)),
-                on_audio_delta=lambda delta: asyncio.create_task(send_audio_delta(session_id, delta)),
                 on_audio_done=lambda: asyncio.create_task(send_audio_done(session_id)),
+                on_audio_delta=lambda delta: asyncio.create_task(send_audio_delta(session_id, delta)),
+                on_response_done=lambda text: asyncio.create_task(send_response_done(session_id, text)),
                 on_function_call=lambda name, args: asyncio.create_task(handle_function_call(session_id, name, args))
             )
             
@@ -95,38 +94,24 @@ async def process_websocket_message(session_id: str, message: Dict):
         logger.error(f"Error processing message: {str(e)}")
         await websocket.send_json({"type": "error", "message": str(e)})
 
-async def send_text_delta(session_id: str, delta: str):
-    """Send text delta to client."""
-    websocket = active_connections.get(session_id)
-    if websocket:
-        await websocket.send_json({"type": "text_response_delta", "delta": delta})
-
-async def send_text_done(session_id: str, text: str):
+async def send_response_done(session_id: str, response: dict):
     """Send completed text to client."""
     websocket = active_connections.get(session_id)
-    if websocket:
-        clean_text = text.strip()
-        if clean_text.startswith("```json"):
-            clean_text = clean_text[7:]  # Remove ```json
-        if clean_text.endswith("```"):
-            clean_text = clean_text[:-3]  # Remove ```
-        clean_text = clean_text.strip()  # Remove any extra whitespace
-
-        # Parse the cleaned JSON string
-        parsed_data = json.loads(clean_text)
-        role = parsed_data.get("role", "")
-        message_text = parsed_data.get("text", "")
-        
-        await websocket.send_json({"type": "text_response_done", "text": message_text, "role": role})
+    final_response = json.loads(response["content"][0]["transcript"])
+    final_response_msg = final_response["text"]
+    final_response_role = final_response["role"]
+    
+    if websocket:        
+        await websocket.send_json({"type": "response_done", "text": final_response_msg, "role": final_response_role})
         
         # Store in conversation history
         if session_id in conversation_history:
-            if role == "doctor":  # Assuming translated text indicates source language
-                conversation_history[session_id]["doctor_messages"].append(text)
-                conversation_history[session_id]["last_doctor_message"] = text
-            elif role == "patient":
-                conversation_history[session_id]["patient_messages"].append(text)
-                conversation_history[session_id]["last_patient_message"] = text
+            if final_response_role == "doctor":  # Assuming translated text indicates source language
+                conversation_history[session_id]["doctor_messages"].append(final_response_msg)
+                conversation_history[session_id]["last_doctor_message"] = final_response_msg
+            elif final_response_role == "patient":
+                conversation_history[session_id]["patient_messages"].append(final_response_msg)
+                conversation_history[session_id]["last_patient_message"] = final_response_msg
 
 async def send_audio_delta(session_id: str, delta: str):
     """Send audio delta to client."""

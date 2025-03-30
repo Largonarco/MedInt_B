@@ -19,10 +19,9 @@ class OpenAIRealtimeManager:
     
     def __init__(
         self,
-        on_text_delta: Callable[[str], None],
-        on_text_done: Callable[[str], None],
-        on_audio_delta: Callable[[str], None],
         on_audio_done: Callable[[], None],
+        on_audio_delta: Callable[[str], None],
+        on_response_done: Callable[[str], None],
         on_function_call: Callable[[str, Dict], None]
     ):
         self.api_key = os.getenv("OPENAI_API_KEY")
@@ -35,10 +34,9 @@ class OpenAIRealtimeManager:
         self.api_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
         
         # Callbacks
-        self.on_text_done = on_text_done
-        self.on_text_delta = on_text_delta
         self.on_audio_done = on_audio_done
         self.on_audio_delta = on_audio_delta
+        self.on_response_done = on_response_done
         self.on_function_call = on_function_call
         
         # Tool definitions
@@ -92,7 +90,7 @@ class OpenAIRealtimeManager:
         create_session_event = {
             "type": "session.update",
             "session": {
-                "modalities": ["text"],
+                "modalities": ["text", "audio"],
                 "instructions": """You are a Medical Interpreter facilitating communication between a Spanish-speaking patient and an English-speaking doctor. Your task is to translate audio inputs literally and perform specific actions when requested.""",
                 "voice": "alloy",
                 "tools": self.tools,
@@ -130,18 +128,15 @@ class OpenAIRealtimeManager:
     async def _process_message(self, message: Dict):
         message_type = message.get("type")
         try:
-            if message_type == "response.text.delta":
-                if self.on_text_delta and "delta" in message:
-                    self.on_text_delta(message["delta"])
-            elif message_type == "response.text.done":
-                if self.on_text_done and "text" in message:
-                    self.on_text_done(message["text"])
-            elif message_type == "response.audio.delta":
+            if message_type == "response.audio.delta":
                 if self.on_audio_delta and "delta" in message:
                     self.on_audio_delta(message["delta"])
             elif message_type == "response.audio.done":
                 if self.on_audio_done:
                     self.on_audio_done()
+            elif message_type == "response.done":
+                if self.on_response_done and "response" in message:
+                    self.on_response_done(message["response"]["output"][0])
             elif message_type == "response.function_call_arguments.done":
                 if self.on_function_call and "name" in message and "arguments" in message:
                     function_name = message["name"]
@@ -173,7 +168,7 @@ class OpenAIRealtimeManager:
             create_response_event = {
                 "type": "response.create",
                 "response": {
-                    "modalities": ["text"],
+                    "modalities": ["text", "audio"],
                     "instructions": """
                   - Primary Tasks:
                     - When given Spanish audio input, assume it's from the patient and translate it to English text verbatim, without adding your own interpretation.
