@@ -1,4 +1,4 @@
-# Medical Interpreter API
+# MedInt API
 
 A FastAPI-based backend service designed to facilitate real-time communication between Spanish-speaking patients and English-speaking doctors. This API leverages OpenAI's Realtime API for speech-to-text translation and integrates tools for scheduling follow-up appointments and sending lab orders.
 
