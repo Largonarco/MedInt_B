@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(title="Medical Interpreter API")
-
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -26,13 +25,14 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+# Tool manager instance
+tool_manager = ToolManager()
+
 # Store active connections and conversation history
 conversation_history: Dict[str, Dict] = {}
 active_connections: Dict[str, WebSocket] = {}
 openai_managers: Dict[str, OpenAIRealtimeManager] = {}
 
-# Tool manager instance
-tool_manager = ToolManager()
 
 async def process_websocket_message(session_id: str, message: Dict):
     """Process incoming WebSocket messages."""
@@ -117,54 +117,61 @@ async def send_audio_done(session_id: str):
 
 async def send_response_done(session_id: str, response: dict):
     """Send completed text to client."""
+    response_type = response.get("type")
     websocket = active_connections.get(session_id)
-    final_response = json.loads(response["content"][0]["transcript"])
-    final_response_msg = final_response["text"]
-    final_response_role = final_response["role"]
-    
-    if websocket:        
-        await websocket.send_json({"type": "response_done", "text": final_response_msg, "role": final_response_role})
-        
-        # Store in conversation history
-        if session_id in conversation_history:
-            if final_response_role == "doctor":  # Assuming translated text indicates source language
-                conversation_history[session_id]["doctor_messages"].append(final_response_msg)
-                conversation_history[session_id]["last_doctor_message"] = final_response_msg
-            elif final_response_role == "patient":
-                conversation_history[session_id]["patient_messages"].append(final_response_msg)
-                conversation_history[session_id]["last_patient_message"] = final_response_msg
 
-async def handle_function_call(session_id: str, function_name: str, function_args: Dict):
-    """Handle function calls from OpenAI."""
-    websocket = active_connections.get(session_id)
-    openai_manager = openai_managers.get(session_id)
-    
-    if not websocket or not openai_manager:
-        return
-    
-    try:
+    if not websocket:
+        logger.error("Error executing response_done event as websocket conn was not available")
+
+    # Based on the event type calling function or just sending text back
+    if response_type == "function_call":
+        call_id = response["call_id"]
+        function_name = response["name"]
+        openai_manager = openai_managers.get(session_id)
+        function_args = json.loads(response["arguments"])
+
+        if not openai_manager:
+           logger.error("Error executing response_done event as openai_ws conn was not available")
+        
         logger.info(f"Function call: {function_name} with arguments: {function_args}")
         
-        if function_name == "schedule_follow_up":
-            result = await tool_manager.schedule_follow_up(function_args)
-        elif function_name == "send_lab_order":
-            result = await tool_manager.send_lab_order(function_args)
-        else:
-            result = {"error": f"Unknown function: {function_name}"}
+        try:
+            if function_name == "schedule_follow_up":
+                result = tool_manager.schedule_follow_up(function_args)
+            elif function_name == "send_lab_order":
+                result = tool_manager.send_lab_order(function_args)
+            
+            # Send result back to OpenAI
+            await openai_manager.send_function_result(call_id, result)
+            
+            # Notify client about the action
+            await websocket.send_json({
+                "type": "action_executed",
+                "action": function_name,
+                "details": result
+            })
+            
+        except Exception as e:
+            logger.error(f"Error executing function {function_name}: {str(e)}")
+            await openai_manager.send_function_result(call_id, {"error": f"Error executing function {function_name}"})
         
-        # Send result back to OpenAI
-        await openai_manager.send_function_result(function_name, result)
+    elif response_type == "message":
+        print(response)
+        parsed_json = json.loads(response["content"][0]["transcript"])
+        msg = parsed_json["text"]
+        role = parsed_json["role"]
         
-        # Notify client about the action
-        await websocket.send_json({
-            "type": "action_executed",
-            "action": function_name,
-            "details": result
-        })
-        
-    except Exception as e:
-        logger.error(f"Error executing function {function_name}: {str(e)}")
-        await openai_manager.send_function_result(function_name, {"error": str(e)})
+        await websocket.send_json({"type": "response_done", "text": msg, "role": role})
+            
+        # Store in conversation history
+        if session_id in conversation_history:
+            if role == "doctor":  # Assuming translated text indicates source language
+                conversation_history[session_id]["doctor_messages"].append(msg)
+                conversation_history[session_id]["last_doctor_message"] = msg
+            elif role == "patient":
+                conversation_history[session_id]["patient_messages"].append(msg)
+                conversation_history[session_id]["last_patient_message"] = msg
+
 
 @app.get("/")
 async def root():

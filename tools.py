@@ -1,6 +1,7 @@
 import os
 import json
 import aiohttp
+import requests
 import logging
 from typing import Dict, Any
 from datetime import datetime
@@ -18,11 +19,10 @@ class ToolManager:
     
     def __init__(self):
         """Initialize the tool manager."""
-        # Get webhook URL from environment or use webhook.site
-        self.webhook_url = os.getenv("WEBHOOK_URL", "https://webhook.site/your-webhook-id")
+        self.webhook_url = os.getenv("WEBHOOK_URL", "https://webhook.site/91c97f36-0a2d-40f2-a300-cf6d8e768814")
         logger.info(f"Using webhook URL: {self.webhook_url}")
     
-    async def schedule_follow_up(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def schedule_follow_up(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Schedule a follow-up appointment for a patient.
         
         Args:
@@ -38,33 +38,25 @@ class ToolManager:
             # Validate required parameters
             if not params.get("patientName"):
                 raise ValueError("Patient name is required")
-            
             if not params.get("date"):
                 raise ValueError("Appointment date is required")
             
             # Default reason if not provided
             reason = params.get("reason", "Follow-up appointment")
-            
-            # Prepare appointment data
-            appointment_data = {
+                        
+            # Send appointment data to webhook
+            response = requests.post(
+                self.webhook_url,
+                json={
                 "reason": reason,
                 "action": "schedule_follow_up",
-                "patient_name": params["patientName"],
                 "appointment_date": params["date"],
+                "patient_name": params["patientName"],
                 "timestamp": datetime.now().isoformat()
-            }
-            
-            # Send appointment data to webhook
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.webhook_url,
-                    json=appointment_data,
-                    headers={"Content-Type": "application/json"}
-                ) as response:
-                    response_status = response.status
-                    logger.info(f"Webhook response status: {response_status}")
-            
-            logger.info(f"Follow-up appointment scheduled: {appointment_data}")
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            response_status = response.status_code
             
             # Return success response
             return {
@@ -78,7 +70,7 @@ class ToolManager:
             logger.error(f"Error scheduling follow-up: {str(e)}")
             raise ValueError(f"Failed to schedule follow-up: {str(e)}")
     
-    async def send_lab_order(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def send_lab_order(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Send a lab order for a patient.
         
         Args:
@@ -94,33 +86,26 @@ class ToolManager:
             # Validate required parameters
             if not params.get("patientName"):
                 raise ValueError("Patient name is required")
-            
+                # Validate required parameters
             if not params.get("testType"):
                 raise ValueError("Test type is required")
-            
             # Default urgency if not provided
             urgency = params.get("urgency", "routine")
-            
-            # Prepare lab order data
-            lab_order_data = {
+                        
+            # Send lab order data to webhook
+            response = requests.post(
+                self.webhook_url,
+                json={
                 "urgency": urgency,
                 "action": "send_lab_order",
-                "patient_name": params["patientName"],
                 "test_type": params["testType"],
+                "patient_name": params["patientName"],
                 "timestamp": datetime.now().isoformat()
-            }
-            
-            # Send lab order data to webhook
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.webhook_url,
-                    json=lab_order_data,
-                    headers={"Content-Type": "application/json"}
-                ) as response:
-                    response_status = response.status
-                    logger.info(f"Webhook response status: {response_status}")
-            
-            logger.info(f"Lab order sent: {lab_order_data}")
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            response_status = response.status_code
+
             
             # Return success response
             return {

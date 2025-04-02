@@ -142,11 +142,6 @@ class OpenAIRealtimeManager:
             elif message_type == "response.done":
                 if self.on_response_done and "response" in message:
                     self.on_response_done(message["response"]["output"][0])
-            elif message_type == "response.function_call_arguments.done":
-                if self.on_function_call and "name" in message and "arguments" in message:
-                    function_name = message["name"]
-                    function_args = json.loads(message["arguments"])
-                    self.on_function_call(function_name, function_args)
             elif message_type == "error":
                 logger.error(f"OpenAI error: {message.get('message', 'Unknown error')}")
         except Exception as e:
@@ -184,8 +179,8 @@ class OpenAIRealtimeManager:
                     - If the doctor says "schedule followup appointment" or "send lab order", call the respective function (`schedule_follow_up` or `send_lab_order`) with appropriate arguments inferred from the conversation.
                   - Output Format: Always return a JSON object in this exact format: {"text": "<translated_text>", "role": "<patient or doctor>"}.
                   - Notes: Audio input language indicates the speaker (Spanish = patient, English = doctor) unless otherwise specified.""",
-                    "tools": self.tools,
-                    "tool_choice": "auto"
+                "tools": self.tools,
+                "tool_choice": "auto"
                 }
             }
             await self._send_message(create_response_event)
@@ -222,18 +217,24 @@ class OpenAIRealtimeManager:
             logger.error(f"Error generating summary: {str(e)}")
             raise
     
-    async def send_function_result(self, function_name: str, result: Dict):
+    async def send_function_result(self, call_id: str, result: Dict):
         try:
             function_output_event = {
                 "type": "conversation.item.create",
                 "item": {
                     "type": "function_call_output",
-                    "role": "system",
+                    "call_id": call_id,
                     "output": json.dumps(result)
                 }
             }
             await self._send_message(function_output_event)
-            await self._send_message({"type": "response.create"})
+            await self._send_message({
+                "type": "response.create",
+                "response": {
+                    "modalities": ["text"],
+                    "instructions": """Generate a simple message mentioning output details based on the output. """
+                }
+            })
         except Exception as e:
             logger.error(f"Error sending function result: {str(e)}")
             raise
